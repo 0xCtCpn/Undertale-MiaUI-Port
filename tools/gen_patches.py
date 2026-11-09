@@ -50,7 +50,7 @@ if "createFallbackMappings" in open(S1).read():
     sys.exit(1)
 
 # ---- step 1: mapping-only 001
-r = run(["python3", "/mnt/insert_mapping.py"], ok=False)
+r = run(["python3", "/mnt/tools/insert_mapping.py"], ok=False)
 print(r.stdout.strip(), r.stderr.strip())
 diff = run(["git", "-C", UP, "diff", "--", "src/backends/sdl1.c"]).stdout
 open(P001, "w", encoding="utf-8", newline="\n").write(diff)

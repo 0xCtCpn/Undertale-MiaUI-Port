@@ -1,0 +1,28 @@
+Undertale - MiaUI (RG35XX) Port
+Copyright 2026 0xCtCpn
+Distributed under the GNU Affero General Public License, version 3 or later.
+
+MiaUI modifications vs upstream cobaltgit/Butterscotch (pinned at
+92ed6b8c3766361a201a69d202bcde5873cdad7e):
+
+- patches/001-rg35xx-fallback-mapping.patch (new): createFallbackMappings()
+  for the RG35XX gpio-keys pad (dpad at sdl 13-16, volume key at 12)
+- patches/002-chunklog.patch, patches/003-stage-markers.patch,
+  patches/004-sdl-error.patch, patches/005-sdl1-error.patch,
+  patches/006-fpslog.patch: diagnostics (chunk/stage/FPSLOG markers,
+  SDL_GetError() in init failures)
+- patches/007-joyname-cache.patch: cache SDL_JoystickName() per slot
+  (SDL 1.2 opens the device + issues ioctls every call; ~50ms/frame)
+- patches/008-exit-cursor.patch: Select+Start clean-exit combo, hide the
+  fbcon stub cursor
+- Dockerfile retargeted to arm-buildroot-linux-gnueabihf (glibc 2.37,
+  INTERP /lib/ld-linux-armhf.so.3), SDL1.2 fbcon + ALSA, software renderer
+- launch.sh: ROMs/Ports/Undertale.pak/ layout, SDL_VIDEODRIVER=fbcon,
+  SDL_NOMOUSE=1, CPU governor pinning, debug.log probe
+
+Upstream code retains its own licenses; see upstream/LICENSE (AGPLv3).
+Upstream is vendored under upstream/ and is re-cloneable at the pinned
+commit (see .gitignore).
+
+Undertale game files, artwork and audio are commercial Toby Fox property
+and are not covered by the project license.
