@@ -1,0 +1,69 @@
+diff --git a/src/backends/sdl1.c b/src/backends/sdl1.c
+index c93c9e6..0dcb2dc 100644
+--- a/src/backends/sdl1.c
++++ b/src/backends/sdl1.c
+@@ -375,6 +375,10 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless)
+ 
+     SDL_EnableKeyRepeat(0, 0);
+ 
++    /* Onion (patch 008): fbcon draws a stub mouse cursor that never moves
++     * and sits in the corner; hide it for good. */
++    SDL_ShowCursor(SDL_DISABLE);
++
+     return true;
+ }
+ 
+@@ -389,8 +393,10 @@ void platformExit(void) {
+ }
+ 
+ static void platformSetCursor(int32_t cursorType) {
+-    // SDL1.2 only supports showing/hiding
+-    SDL_ShowCursor(cursorType == GML_CR_NONE ? SDL_DISABLE : SDL_ENABLE);
++    // SDL1.2 only supports showing/hiding. Onion (patch 008): always hide —
++    // the GML game never uses a real cursor and fbcon's stub sits in a corner.
++    (void) cursorType;
++    SDL_ShowCursor(SDL_DISABLE);
+ }
+ 
+ void platformInitFunctions(Runner *runner) {
+@@ -671,6 +677,23 @@ bool platformHandleEvents(void) {
+                 if (e.key.keysym.sym == SDLK_F4 && (e.key.keysym.mod & KMOD_ALT)) {
+                     return true;
+                 }
++                /* Onion (patch 008): one-time keydown log to identify the
++                 * MiaUI MENU key's SDL keycode on-device. */
++                {
++                    static int lastLoggedSym = -1;
++                    if (e.key.keysym.sym != lastLoggedSym) {
++                        logError("KEYLOG: sym=%d uni=%d\n",
++                            e.key.keysym.sym, e.key.keysym.unicode);
++                        lastLoggedSym = e.key.keysym.sym;
++                    }
++                }
++#ifdef SDLK_MENU
++                /* Onion (patch 008): hardware MENU key quits if it reaches SDL. */
++                if (e.key.keysym.sym == SDLK_MENU) {
++                    logError("KEYLOG: MENU key -> exit\n");
++                    return true;
++                }
++#endif
+                 // During playback, suppress real keyboard input
+                 if (InputRecording_isPlaybackActive(globalInputRecording)) break;
+                 RunnerKeyboard_onKeyDown(g_runner->keyboard, SDLKeyToGml(e.key.keysym.sym));
+@@ -715,6 +738,16 @@ bool platformHandleEvents(void) {
+     }
+     }
+ 
++    /* Onion (patch 008): exit combo for MiaUI RG35XX (no OS quit path):
++     * Select (sdl 8) + Start (sdl 9) held together closes the game. */
++    for (int i = 0; i < MAX_GAMEPADS; i++) {
++        SDL_Joystick* exj = openJoysticks[i];
++        if (!exj) continue;
++        if (SDL_JoystickNumButtons(exj) > 9 &&
++            SDL_JoystickGetButton(exj, 8) && SDL_JoystickGetButton(exj, 9))
++            return true;
++    }
++
+     return false;
+ }
+ 

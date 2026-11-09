@@ -1,0 +1,30 @@
+diff --git a/src/backends/sdl1.c b/src/backends/sdl1.c
+index d173c12..c93c9e6 100644
+--- a/src/backends/sdl1.c
++++ b/src/backends/sdl1.c
+@@ -575,7 +575,24 @@ bool platformHandleEvents(void) {
+             slot->connected = true;
+             slot->jid = slotIdx;
+ 
+-            const char* name = SDL_JoystickName(slotIdx);
++            /* Onion perf fix (patch 007): SDL 1.2's SDL_JoystickName()
++             * open()s the device and issues EVIOCGNAME/JSIOCGNAME ioctls
++             * on EVERY call (~50ms on MiaUI keymatrix); we poll it every
++             * frame, so cache the result per slot index instead. */
++            static char joyNameCache[MAX_GAMEPADS][64];
++            static SDL_Joystick* joyNameJoy[MAX_GAMEPADS];
++            const char* name = NULL;
++            if (joyNameJoy[slotIdx] != joy) {
++                const char* n = SDL_JoystickName(slotIdx);
++                if (n != NULL) {
++                    strncpy(joyNameCache[slotIdx], n, sizeof(joyNameCache[slotIdx]) - 1);
++                    joyNameCache[slotIdx][sizeof(joyNameCache[slotIdx]) - 1] = '\0';
++                } else {
++                    joyNameCache[slotIdx][0] = '\0';
++                }
++                joyNameJoy[slotIdx] = joy;
++            }
++            if (joyNameCache[slotIdx][0] != '\0') name = joyNameCache[slotIdx];
+             if (name != NULL) {
+                 strncpy(slot->description, name, sizeof(slot->description) - 1);
+                 slot->description[sizeof(slot->description) - 1] = '\0';

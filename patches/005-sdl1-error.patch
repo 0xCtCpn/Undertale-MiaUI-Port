@@ -1,0 +1,13 @@
+diff --git a/src/backends/sdl1.c b/src/backends/sdl1.c
+index fcd595e..49767b7 100644
+--- a/src/backends/sdl1.c
++++ b/src/backends/sdl1.c
+@@ -316,7 +316,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless)
+ 
+     // Init SDL
+     if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_JOYSTICK)) {
+-        logError("Failed to initialize SDL\n");
++        logError("Failed to initialize SDL: %s\n", SDL_GetError());
+         return false;
+     }
+ 

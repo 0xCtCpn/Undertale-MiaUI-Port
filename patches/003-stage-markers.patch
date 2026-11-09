@@ -1,0 +1,54 @@
+diff --git a/src/loop.c b/src/loop.c
+index db3b538..6bbfd19 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -536,7 +536,9 @@ int loop(CommandLineArgs args, const char *argv0) {
+         options.lazyLoadTextures = args.lazyTextures;
+         options.lazyLoadAudio = args.lazyAudio;
+         options.eagerlyLoadedRooms = args.eagerRooms;
++        fprintf(stderr, "[stage] parse-start\n"); fflush(stderr);
+         DataWin* dataWin = DataWin_parse(currentDataWinPath, options);
++        fprintf(stderr, "[stage] parse-done\n"); fflush(stderr);
+ 
+         Gen8* gen8 = &dataWin->gen8;
+         logInfo("Loaded \"%s\" (%d) successfully! [WAD Version %u / GameMaker version %u.%u.%u.%u]\n", gen8->name, gen8->gameID, gen8->wadVersion, dataWin->detectedFormat.major, dataWin->detectedFormat.minor, dataWin->detectedFormat.release, dataWin->detectedFormat.build);
+@@ -553,7 +555,9 @@ int loop(CommandLineArgs args, const char *argv0) {
+         snprintf(windowTitle, sizeof(windowTitle), "Butterscotch - %s", gen8->displayName);
+ 
+         // Initialize VM
++        fprintf(stderr, "[stage] vm-create\n"); fflush(stderr);
+         VMContext* vm = VM_create(dataWin);
++        fprintf(stderr, "[stage] vm-done\n"); fflush(stderr);
+ 
+         Profiler_setEnabled(&vm->profiler, args.profilerFramesBetween > 0);
+ #ifdef ENABLE_VM_OPCODE_PROFILER
+@@ -803,6 +807,7 @@ int loop(CommandLineArgs args, const char *argv0) {
+         resolveWindowSize(&args, gen8->defaultWindowWidth, gen8->defaultWindowHeight, &windowW, &windowH);
+ 
+         if (!platformInitialized) {
++            fprintf(stderr, "[stage] platformInit %dx%d headless=%d\n", windowW, windowH, args.headless ? 1 : 0); fflush(stderr);
+             if (!platformInit(windowW, windowH, windowTitle, args.headless)) {
+                 DataWin_free(dataWin);
+                 PreProcessedStuff_free();
+@@ -865,7 +870,9 @@ int loop(CommandLineArgs args, const char *argv0) {
+             return 1;
+         }
+ 
++        fprintf(stderr, "[stage] renderer-done\n"); fflush(stderr);
+         // Initialize the audio system
++        fprintf(stderr, "[stage] audio-create headless=%d\n", args.headless ? 1 : 0); fflush(stderr);
+         AudioSystem* audioSystem = nullptr;
+         if (args.headless) {
+             audioSystem = (AudioSystem*) NoopAudioSystem_create();
+@@ -881,8 +888,11 @@ int loop(CommandLineArgs args, const char *argv0) {
+ #endif
+         }
+ 
++        fprintf(stderr, "[stage] audio-done\n"); fflush(stderr);
+         // Initialize the runner
++        fprintf(stderr, "[stage] runner-create\n"); fflush(stderr);
+         Runner* runner = Runner_create(dataWin, vm, renderer, (FileSystem*) overlayFs, audioSystem, args.seed);
++        fprintf(stderr, "[stage] runner-done\n"); fflush(stderr);
+ 
+         if (!args.lazyTextures) {
+             repeat(runner->dataWin->txtr.count, i) {

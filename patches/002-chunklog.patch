@@ -1,0 +1,15 @@
+diff --git a/src/data_win.c b/src/data_win.c
+index b2eac67..24fac00 100644
+--- a/src/data_win.c
++++ b/src/data_win.c
+@@ -2877,6 +2877,10 @@ DataWin* DataWin_parse(const char* filePath, DataWinParserOptions options) {
+             (options.parseAudo && memcmp(chunkName, "AUDO", 4) == 0) ||
+             (memcmp(chunkName, "ACRV", 4) == 0);
+ 
++        /* Garlic diagnostic: per-chunk marker so hangs in Pass 2 are visible
++         * in debug.log (Bulk-read AUDO 34MB is the only bulk-read headless
++         * skips; video/audio tests died here). */
++        logInfo("Chunk %d %.4s len %u offset 0x%zX\n", chunkIndex, chunkName, chunkLength, chunkDataStart);
+         // Bulk-read the chunk data into memory for fast parsing
+         uint8_t* chunkBuffer = nullptr;
+         if (shouldParse && chunkLength > 0 && options.loadType == DATAWINLOADTYPE_LOAD_PER_CHUNK) {

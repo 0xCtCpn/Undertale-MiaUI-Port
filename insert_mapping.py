@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Insert createFallbackMappings() into /build/upstream/src/backends/sdl1.c at
+the exact build-time position (baked into a patch by git diff afterwards)."""
+import io, re, sys
+
+path = "/build/upstream/src/backends/sdl1.c"
+src = open(path, "r", encoding="utf-8").read()
+
+FUNC = r'''
+/* Onion (RG35XX / MiaUI) fallback mapping. The shipped gamecontrollerdb.txt
+ * has no entry matching the RG35XX gpio-keys pad, so without a fallback the
+ * pad reports "connected" but every gp_button stays false.
+ *
+ * Verified SDL1.2 joystick order (MiaUI, 'RG35XX Gamepad', buttons=17
+ * axes=0 hats=0 - from on-device probe run 2, 5 press cycles):
+ *   0:A 1:B 2:X 3:Y 4:L1 5:R1 6:L2 7:R2 8:Select 9:Start 10:L3 11:R3
+ *   12:VOL-DOWN(!) 13:dpup 14:dpdown 15:dpleft 16:dpright
+ * The dpad sits ONE SLOT LOWER than the GP standard order, and joystick
+ * button 12 is the system volume key (must never map to a game button).
+ * The dpad indices are plugged in explicitly; everything else (face,
+ * shoulders, select/start) is the identity map.
+ * Pads whose dpad is a hat/axes (Garlic-era) get the hat/axis fallbacks
+ * below; both paths may be filled, the poll ORs them.
+ */
+static void createFallbackMappings(void) {
+    for (int i = 0; i < MAX_GAMEPADS; i++) {
+        SDL_Joystick* joy = openJoysticks[i];
+        if (!joy || joystickMappings[i].valid) continue;
+        const char* jname = SDL_JoystickName(i);
+        int nbtn = SDL_JoystickNumButtons(joy);
+        int nax = SDL_JoystickNumAxes(joy);
+        int nhat = SDL_JoystickNumHats(joy);
+        GamepadMapping* m = &joystickMappings[i];
+        memset(m, 0, sizeof(GamepadMapping));
+        for (int k = 0; k < GP_BUTTON_COUNT; k++) {
+            m->button_map[k] = -1;
+            m->hat_map[k] = -1;
+            m->hat_mask[k] = -1;
+            m->axis_button_map[k] = -1;
+            m->axis_button_sign[k] = 1.0f;
+        }
+        for (int k = 0; k < GP_AXIS_COUNT; k++) m->axis_map[k] = -1;
+        /* Indices 0..9 = A,B,X,Y,L1,R1,L2,R2,Select,Start (identity).
+         * Indices 10,11 don't physically exist; 12 is volume-down. */
+        int idn = nbtn < 10 ? nbtn : 10;
+        for (int k = 0; k < idn; k++) m->button_map[k] = k;
+        m->max_button = idn > 0 ? idn - 1 : -1;
+        /* This pad's dpad: gp 12..15 (dpup..dpright) <- sdl 13..16. */
+        if (nbtn > 15) {
+            m->button_map[12] = 13; /* gp dpup    <- sdl 13 (phys up) */
+            m->button_map[13] = 14; /* gp dpdown  <- sdl 14 (phys down) */
+            m->button_map[14] = 15; /* gp dpleft  <- sdl 15 (phys left) */
+            m->button_map[15] = 16; /* gp dpright <- sdl 16 (phys right) */
+            m->max_button = 16;
+        }
+        if (nhat > 0) {
+            m->max_hat = nhat - 1;
+            m->hat_map[12] = 0; m->hat_mask[12] = SDL_HAT_UP;    /* dpup */
+            m->hat_map[13] = 0; m->hat_mask[13] = SDL_HAT_DOWN;  /* dpdown */
+            m->hat_map[14] = 0; m->hat_mask[14] = SDL_HAT_LEFT;  /* dpleft */
+            m->hat_map[15] = 0; m->hat_mask[15] = SDL_HAT_RIGHT; /* dpright */
+        }
+        if (nax > 1) {
+            m->max_axis = nax - 1;
+            m->axis_map[0] = 0;  /* leftx */
+            m->axis_map[1] = 1;  /* lefty */
+            m->axis_button_map[14] = 0; m->axis_button_sign[14] = -1.0f;
+            m->axis_button_map[15] = 0; m->axis_button_sign[15] = 1.0f;
+            m->axis_button_map[12] = 1; m->axis_button_sign[12] = -1.0f;
+            m->axis_button_map[13] = 1; m->axis_button_sign[13] = 1.0f;
+        }
+        if (nax > 2) { m->axis_button_map[6] = 2; m->axis_button_sign[6] = 1.0f; }  /* L2 as ABS_Z */
+        if (nax > 3) { m->axis_button_map[7] = 3; m->axis_button_sign[7] = 1.0f; }  /* R2 as ABS_RZ */
+        m->valid = true;
+        logInfo("Gamepad: fallback mapping for '%s' (slot %d) buttons=%d axes=%d hats=%d\n",
+            jname ? jname : "(null)", i, nbtn, nax, nhat);
+    }
+}
+'''
+
+if "createFallbackMappings" in src:
+    print("already patched, nothing to do")
+    sys.exit(0)
+
+anchor1 = "void platformSetWindowTitle(const char* title) {"
+if anchor1 not in src:
+    sys.exit("anchor1 not found")
+src = src.replace(anchor1, FUNC.lstrip("\n") + "\n" + anchor1, 1)
+
+anchor2 = "    loadGamepadMappings();\n\n"
+if anchor2 not in src:
+    sys.exit("anchor2 not found")
+extra = """    loadGamepadMappings();
+    createFallbackMappings();
+    {
+        char vbuf[64];
+        const char* vd = SDL_VideoDriverName(vbuf, sizeof(vbuf));
+        logInfo("Video: driver %s (%dx%d requested)\\n",
+            vd ? vd : "(null)", reqW, reqH);
+    }
+    for (int i = 0; i < MAX_GAMEPADS; i++) {
+        if (!openJoysticks[i]) continue;
+        const char* jname = SDL_JoystickName(i);
+        logInfo("Gamepad: joystick %d '%s' buttons=%d axes=%d hats=%d valid=%d\\n",
+            i, jname ? jname : "(null)",
+            SDL_JoystickNumButtons(openJoysticks[i]),
+            SDL_JoystickNumAxes(openJoysticks[i]),
+            SDL_JoystickNumHats(openJoysticks[i]),
+            joystickMappings[i].valid ? 1 : 0);
+    }
+
+"""
+src = src.replace(anchor2, extra, 1)
+
+open(path, "w", encoding="utf-8").write(src)
+print("patched OK")

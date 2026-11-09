@@ -1,0 +1,6 @@
+# Force LF everywhere: the patch files are LF-sensitive (git apply),
+# the shell scripts are consumed by busybox sh on-device.
+* text=auto eol=lf
+*.patch text eol=lf
+*.sh text eol=lf
+*.md text eol=lf

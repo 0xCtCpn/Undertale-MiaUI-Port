@@ -1,0 +1,13 @@
+diff --git a/src/backends/sdl2.c b/src/backends/sdl2.c
+index 373dbec..a8c478a 100644
+--- a/src/backends/sdl2.c
++++ b/src/backends/sdl2.c
+@@ -162,7 +162,7 @@ static bool platformGetWindowFocus(void) {
+ bool platformInit(int reqW, int reqH, const char *title, bool headless) {
+     // Init SDL
+     if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_GAMECONTROLLER)) {
+-        logError("Failed to initialize SDL\n");
++        logError("Failed to initialize SDL: %s\n", SDL_GetError());
+         return false;
+     }
+ 

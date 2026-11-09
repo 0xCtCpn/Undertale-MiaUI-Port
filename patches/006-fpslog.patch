@@ -1,0 +1,155 @@
+diff --git a/src/backends/sdl1.c b/src/backends/sdl1.c
+index 49767b7..d173c12 100644
+--- a/src/backends/sdl1.c
++++ b/src/backends/sdl1.c
+@@ -544,9 +544,21 @@ static int32_t SDLMouseButtonToGml(int sdlButton) {
+     }
+ }
+ 
++/* Onion diagnostics (patch 006): shared with loop.c */
++double fpsSdlUpdSum = 0, fpsSdlUpdMax = 0, fpsSdlUpdN = 0;
++double fpsSdlJsSum = 0, fpsSdlJsMax = 0, fpsSdlJsN = 0;
++double fpsSdlPollSum = 0, fpsSdlPollMax = 0, fpsSdlPollN = 0;
+ bool platformHandleEvents(void) {
++    uint64_t _evt0 = nowNanos();
++    uint64_t _upd0 = nowNanos();
+     SDL_JoystickUpdate();
++    {
++        double _udd = (double) (nowNanos() - _upd0);
++        fpsSdlUpdSum += _udd; fpsSdlUpdN++;
++        if (_udd > fpsSdlUpdMax) fpsSdlUpdMax = _udd;
++    }
+ 
++    uint64_t _slot0 = nowNanos();
+     g_runner->gamepads->connectedCount = 0;
+     for (int slotIdx = 0; slotIdx < MAX_GAMEPADS; slotIdx++) {
+         GamepadSlot* slot = g_runner->gamepads->slots + slotIdx;
+@@ -622,6 +634,11 @@ bool platformHandleEvents(void) {
+         } else {
+             slot->connected = false;
+         }
++    {
++        double _jsd = (double) (nowNanos() - _slot0);
++        fpsSdlJsSum += _jsd; fpsSdlJsN++;
++        if (_jsd > fpsSdlJsMax) fpsSdlJsMax = _jsd;
++    }
+     }
+ 
+     SDL_Event e;
+@@ -674,6 +691,11 @@ bool platformHandleEvents(void) {
+             case SDL_QUIT:
+                 return true;
+         }
++    {
++        double _pld = (double) (nowNanos() - _evt0);
++        fpsSdlPollSum += _pld; fpsSdlPollN++;
++        if (_pld > fpsSdlPollMax) fpsSdlPollMax = _pld;
++    }
+     }
+ 
+     return false;
+diff --git a/src/loop.c b/src/loop.c
+index 6bbfd19..ac8a765 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -970,6 +970,15 @@ int loop(CommandLineArgs args, const char *argv0) {
+         bool freeCamActive = false;
+         bool actuallyShuttingDown = false;
+         uint64_t lastFrameTime = nowNanos();
++        /* Onion diagnostics (patch 006): counters shared with sdl1.c */
++        extern double fpsSdlUpdSum, fpsSdlUpdMax, fpsSdlUpdN;
++        extern double fpsSdlJsSum, fpsSdlJsMax, fpsSdlJsN;
++        extern double fpsSdlPollSum, fpsSdlPollMax, fpsSdlPollN;
++        __attribute__((used)) static double fpsPhEv = 0, fpsPhEvN = 0, fpsPhEvMax = 0;
++        __attribute__((used)) static double fpsPhPre = 0, fpsPhPreN = 0;
++        __attribute__((used)) static double fpsPhStep = 0, fpsPhStepN = 0, fpsPhStepMax = 0;
++        __attribute__((used)) static double fpsPhSwap = 0, fpsPhSwapN = 0;
++        __attribute__((used)) static double fpsPhSleep = 0, fpsPhSleepN = 0;
+         uint64_t lastFrameStartTime = lastFrameTime; // for delta_time
+         bool shouldWindowClose = false;
+         while (true) {
+@@ -991,10 +1000,16 @@ int loop(CommandLineArgs args, const char *argv0) {
+             RunnerKeyboard_beginFrame(runner->keyboard);
+             RunnerGamepad_beginFrame(runner->gamepads);
+             RunnerMouse_beginFrame(runner->mouse);
++            fpsPhPre += (double) (nowNanos() - frameStartNow); fpsPhPreN++;
+             if (platformHandleEvents()) {
+                 shouldWindowClose = true;
+                 continue;
+             }
++            {
++                double _evd = (double) (nowNanos() - frameStartNow);
++                fpsPhEv += _evd; fpsPhEvN++;
++                if (_evd > fpsPhEvMax) fpsPhEvMax = _evd;
++            }
+ 
+             // Debug key bindings
+             if (runner->debugMode) {
+@@ -1287,9 +1302,11 @@ int loop(CommandLineArgs args, const char *argv0) {
+                 if (runner->pendingRoom == -1)
+                     platformSwapBuffers();
+                 Runner_handlePendingRoomChange(runner);
+-            }
+-
+-            if (RunnerKeyboard_checkPressed(runner->keyboard, VK_BACKSPACE)) {
++                {
++                    double _sd = (double) (nowNanos() - frameStartNow);
++                    fpsPhStep += _sd; fpsPhStepN++;
++                    if (_sd > fpsPhStepMax) fpsPhStepMax = _sd;
++                }
+                 size_t bytes_used = get_used_memory();
+                 if (bytes_used == 0)
+                     logWarn("Unable to get memory usage\n");
+@@ -1308,9 +1325,52 @@ int loop(CommandLineArgs args, const char *argv0) {
+                 double effectiveSpeed = (args.fastForwardSpeed > 0.0 && fastForwardActive) ? args.fastForwardSpeed : args.speedMultiplier;
+                 uint64_t targetFrameTime = 1000000000 / (runner->currentRoom->speed * effectiveSpeed);
+                 uint64_t nextFrameTime = lastFrameTime + targetFrameTime;
++                uint64_t _sleepT0 = nowNanos();
+                 platformSleepUntil(nextFrameTime);
++                fpsPhSleep += (double) (nowNanos() - _sleepT0); fpsPhSleepN++;
+             }
+             lastFrameTime = nowNanos();
++            {
++                /* Onion diagnostics: real sim interval + phase split.
++                logError (stderr) is unbuffered/always visible. */
++                static uint64_t fpsPrevNs = 0;
++                static double fpsSumNs = 0, fpsMaxNs = 0;
++                static int fpsFrames = 0;
++                uint64_t fpsNow = nowNanos();
++                if (fpsPrevNs != 0) {
++                    double d = (double) (fpsNow - fpsPrevNs);
++                    fpsSumNs += d;
++                    if (d > fpsMaxNs) fpsMaxNs = d;
++                    fpsFrames++;
++                    if (fpsFrames == 300) {
++                        double inv = 1.0 / (fpsFrames > 0 ? fpsFrames : 1);
++                        logError("FPSLOG: avg_interval=%.2fms max=%.2fms avg_fps=%.2f frame=%d | pre=%.2f upd=%.2f/%.2f slot=%.2f/%.2f poll=%.2f/%.2f ev=%.2f/%.2f step=%.2f/%.2f swap=%.2fms sleep=%.2fms\n",
++                            fpsSumNs / fpsFrames / 1000000.0, fpsMaxNs / 1000000.0,
++                            300 * 1000000000.0 / fpsSumNs, runner->frameCount,
++                            fpsPhPre * inv / 1000000.0,
++                            fpsSdlUpdN > 0 ? fpsSdlUpdSum / fpsSdlUpdN / 1000000.0 : 0.0,
++                            fpsSdlUpdN > 0 ? fpsSdlUpdMax / 1000000.0 : 0.0,
++                            fpsSdlJsN > 0 ? fpsSdlJsSum / fpsSdlJsN / 1000000.0 : 0.0,
++                            fpsSdlJsN > 0 ? fpsSdlJsMax / 1000000.0 : 0.0,
++                            fpsSdlPollN > 0 ? fpsSdlPollSum / fpsSdlPollN / 1000000.0 : 0.0,
++                            fpsSdlPollN > 0 ? fpsSdlPollMax / 1000000.0 : 0.0,
++                            fpsPhEv * inv / 1000000.0, fpsPhEvMax / 1000000.0,
++                            fpsPhStep * inv / 1000000.0, fpsPhStepMax / 1000000.0,
++                            fpsPhSwapN > 0 ? fpsPhSwap / fpsPhSwapN / 1000000.0 : 0.0,
++                            fpsPhSleepN > 0 ? fpsPhSleep / fpsPhSleepN / 1000000.0 : 0.0);
++                        fpsFrames = 0; fpsSumNs = 0; fpsMaxNs = 0;
++                        fpsPhEv = 0; fpsPhEvN = 0; fpsPhEvMax = 0;
++                        fpsPhPre = 0; fpsPhPreN = 0;
++                        fpsPhStep = 0; fpsPhStepN = 0; fpsPhStepMax = 0;
++                        fpsPhSwap = 0; fpsPhSwapN = 0;
++                        fpsPhSleep = 0; fpsPhSleepN = 0;
++                        fpsSdlUpdSum = 0; fpsSdlUpdMax = 0; fpsSdlUpdN = 0;
++                        fpsSdlJsSum = 0; fpsSdlJsMax = 0; fpsSdlJsN = 0;
++                        fpsSdlPollSum = 0; fpsSdlPollMax = 0; fpsSdlPollN = 0;
++                    }
++                }
++                fpsPrevNs = fpsNow;
++            }
+         }
+ 
+         saveInputRecording();
