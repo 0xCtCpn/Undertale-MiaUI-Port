@@ -4,9 +4,20 @@
 progdir=$(dirname "$0")
 cd $progdir
 HOME=$progdir
-# Do NOT prepend bundled libasound.so here: the pack ships our SDL1.2-era
-# alsa-lib which rejects the real card (atm7059link); system /usr/lib/libasound
-# knows it (probe: bundled = "No available audio device", system = ok).
+# v1.0.0 releases shipped a bundled libasound.so* (see below for why that
+# breaks audio). If a stale copy is present (in-place update from v1.0.0),
+# move it aside so it can never shadow the system lib via LD_LIBRARY_PATH.
+if [ -e ./libasound.so ] || [ -e ./libasound.so.2 ] || [ -e ./libasound.so.2.0.0 ]; then
+  mkdir -p ./libasound-disabled
+  mv -f ./libasound.so ./libasound.so.2 ./libasound.so.2.0.0 ./libasound-disabled/ 2>/dev/null
+fi
+# Do NOT ship/load a bundled libasound.so.2: the cross-built alsa-lib 1.2.12
+# (compiled-in datadir /opt/arm-alsa-glibc, absent on-device) shadows the
+# system /usr/lib/libasound.so.2 via LD_LIBRARY_PATH and cannot open the real
+# card (atm7059link). Probe evidence: bundled = "No available audio device",
+# system = ok (alsa-lib 1.2.10 + /etc/asound.conf). butterscotch is glibc, so
+# SDL1's libasound dependency must resolve to the SYSTEM lib. $PWD stays on
+# LD_LIBRARY_PATH only for libSDL-1.2.so.0 to be found.
 export LD_LIBRARY_PATH="$PWD:$LD_LIBRARY_PATH"
 unset ALSA_CONFIG_PATH
 unset ALSA_CONFIG_DIR
