@@ -12,11 +12,11 @@ The build is fully reproducible from source via Docker: run `build.bat` and the 
 
 ## Install
 
-0. Prepare your Undertale_MiaUI-release-v1.zip and Undertale Steam files
+0. Prepare your Undertale_MiaUI-release-v1.1zip and Undertale Steam files
 1. Extract the zip into PORTS/
 2. Copy all of your game files (Steam Manage > Browse local files) into /PORTS/Undertale.pak/
 3. Safely eject, boot, go to PORTS -> Undertale
-4. Wait 1-3 minutes (yes its that long)
+4. Wait 30-60 seconds (sometimes its longer)
 5. Thats all, you should be booted in the game now so enjoy!
 
 ## SD folder structure
