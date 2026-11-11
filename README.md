@@ -70,17 +70,6 @@ MiaUI modifications (see `patches/`):
 
 If crashing open `ROMS/Ports/Undertale.pak/debug.log` and check/submit the error
 
-### No music (v1.0.0 releases only)
-
-`debug.log` shows `Error: Audio: SDL_OpenAudio failed: No available audio device`
-but the game runs. Cause: the v1.0.0 zip shipped a bundled `libasound.so.2`
-(alsa-lib 1.2.12, compiled-in data dir `/opt/arm-alsa-glibc` which does not
-exist on-device). Via `LD_LIBRARY_PATH` it shadowed the system
-`/usr/lib/libasound.so.2` (alsa-lib 1.2.10), which is the one that works with
-MiaUI's card. Fix: install v1.1 over the pak — its `launch.sh` moves any stale
-bundled `libasound.so*` aside on first run — or delete `libasound.so*` from
-the pak folder yourself. Music then plays through the system ALSA stack.
-
 ## Credits
 
 Thanks to:
